@@ -1,0 +1,33 @@
+[workspace]
+members = ["cosmic-ext-applet-volumes"]
+resolver = "3"
+
+# Pinned the same way as pop-os/cosmic-applets so both build against the same libcosmic.
+[workspace.dependencies]
+cosmic-launch = { git = "https://github.com/pop-os/libcosmic" }
+futures = "0.3"
+i18n-embed = { version = "0.16.0", features = [
+    "fluent-system",
+    "desktop-requester",
+] }
+i18n-embed-fl = "0.10"
+libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = [
+    "applet",
+    "applet-token",
+    "dbus-config",
+    "multi-window",
+    "tokio",
+    "wayland",
+    "winit",
+] }
+rust-embed = "8.11.0"
+tokio = { version = "1.49.0", features = ["full"] }
+tracing = "0.1"
+tracing-log = "0.2.0"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+zbus = { version = "6.2.1", default-features = false, features = ["tokio"] }
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+lto = "thin"

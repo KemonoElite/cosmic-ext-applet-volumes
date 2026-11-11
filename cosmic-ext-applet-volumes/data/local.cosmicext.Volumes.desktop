@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=Volumes
+Comment=Mount, open and safely remove removable drives
+Type=Application
+Exec=cosmic-ext-applet-volumes
+Terminal=false
+Categories=COSMIC;
+Keywords=COSMIC;Applet;Volume;Drive;Disk;USB;Removable;Eject;Unmount;
+Icon=local.cosmicext.Volumes-symbolic
+StartupNotify=true
+NoDisplay=true
+X-CosmicApplet=true
+X-CosmicShrinkable=true
+X-CosmicHoverPopup=Auto
+X-OverflowPriority=10

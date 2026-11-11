@@ -1,0 +1,25 @@
+[package]
+name = "cosmic-ext-applet-volumes"
+version = "0.2.0"
+edition = "2024"
+license = "GPL-3.0-only"
+description = "Panel applet for the COSMIC desktop: list, mount and safely remove volumes"
+
+[dependencies]
+cosmic-launch = { workspace = true, features = ["tokio"] }
+futures.workspace = true
+i18n-embed-fl.workspace = true
+i18n-embed.workspace = true
+libcosmic.workspace = true
+rust-embed.workspace = true
+tokio.workspace = true
+tracing-log.workspace = true
+tracing-subscriber.workspace = true
+tracing.workspace = true
+zbus = { workspace = true, features = ["proxy"] }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+[dev-dependencies]
+zbus = { workspace = true, features = ["proxy", "object-manager"] }
