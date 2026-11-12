@@ -1,1 +1,1 @@
-doc-valid-idents = ["UDisks2", "COSMIC", ".."]
+doc-valid-idents = ["UDisks2", "COSMIC", "GVfs", "GLib", "GIO", "MTP", "PTP", "FUSE", "libmtp", "gphoto2", ".."]

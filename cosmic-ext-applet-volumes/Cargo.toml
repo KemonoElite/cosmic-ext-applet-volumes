@@ -8,6 +8,7 @@ description = "Panel applet for the COSMIC desktop: list, mount and safely remov
 [dependencies]
 cosmic-launch = { workspace = true, features = ["tokio"] }
 futures.workspace = true
+gio.workspace = true
 i18n-embed-fl.workspace = true
 i18n-embed.workspace = true
 libcosmic.workspace = true

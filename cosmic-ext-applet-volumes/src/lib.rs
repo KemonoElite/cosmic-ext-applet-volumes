@@ -2,6 +2,7 @@
 
 mod app;
 mod localize;
+pub mod mtp;
 pub mod udisks;
 pub mod watch;
 

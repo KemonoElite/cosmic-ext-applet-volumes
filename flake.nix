@@ -30,6 +30,7 @@
             pkg-config,
             util-linuxMinimal, # `rev`, used by the justfile's icon install recipe
             libcosmicAppHook,
+            glib, # GIO, for phones (MTP) through GVfs
           }:
           rustPlatform.buildRustPackage {
             pname = cargoToml.name;
@@ -60,6 +61,8 @@
               util-linuxMinimal
               libcosmicAppHook
             ];
+
+            buildInputs = [ glib ];
 
             dontUseJustBuild = true;
             dontUseJustCheck = true;
@@ -100,20 +103,22 @@
         cosmic-ext-applet-volumes = package final;
       };
 
-      # NixOS module: installs the applet and makes sure UDisks2, which it talks to, is enabled.
-      # (services.desktopManager.cosmic already enables it as a side effect of enabling gvfs;
-      # this just makes the dependency explicit.)
+      # NixOS module: installs the applet and turns on the two services it relies on: UDisks2
+      # (disks) and GVfs (phones over MTP: it brings the libmtp udev rules, FUSE and the GIO
+      # modules). services.desktopManager.cosmic already enables both as a side effect of
+      # enabling gvfs; this makes the dependency explicit.
       #   imports = [ inputs.volumes.nixosModules.default ];
       #   programs.cosmic-ext-applet-volumes.enable = true;
       nixosModules.default =
         { config, lib, pkgs, ... }:
         {
           options.programs.cosmic-ext-applet-volumes.enable =
-            lib.mkEnableOption "the Volumes COSMIC panel applet, and the UDisks2 service it talks to";
+            lib.mkEnableOption "the Volumes COSMIC panel applet, and the UDisks2 and GVfs services it talks to";
 
           config = lib.mkIf config.programs.cosmic-ext-applet-volumes.enable {
             environment.systemPackages = [ (package pkgs) ];
             services.udisks2.enable = lib.mkDefault true;
+            services.gvfs.enable = lib.mkDefault true;
           };
         };
 
@@ -132,6 +137,7 @@
             libcosmicAppHook
             dbus # dbus-daemon, for tests/e2e.rs
           ];
+          buildInputs = [ pkgs.glib ];
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
         };
       });

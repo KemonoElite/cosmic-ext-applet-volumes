@@ -1,8 +1,8 @@
 # Volumes
 
 A panel applet for the [COSMIC](https://github.com/pop-os/cosmic-epoch) desktop that lists your
-volumes (USB sticks, SD cards, discs, external disks) and lets you open, mount and safely remove
-them. Like macOS, where every disk shows up under `/Volumes`.
+volumes (USB sticks, SD cards, discs, external disks, Android phones) and lets you open, mount and
+safely remove them. Like macOS, where every disk shows up under `/Volumes`.
 
 > **No maintainer, no support, no warranty.** This project is not maintained. There is nobody to
 > report bugs to and nobody who will fix them. It is provided as is and you use it entirely at your
@@ -24,6 +24,8 @@ recipes.
   activation token so the window gets focus). Click an unmounted drive to mount and open it.
 - The eject button unmounts the drive and, if it is removable and nothing else on it is still
   mounted, powers it off (or ejects the disc), i.e. "safe to remove".
+- **Android phones** (and other MTP devices) are listed too, with a phone icon, and mounted and
+  unmounted the same way. See "Phones" below for what the phone has to do.
 - The list updates live when drives are plugged in, unplugged, mounted or unmounted.
 - Failures (device busy, permission denied, ...) are shown in the popup with the daemon's own
   message instead of being swallowed.
@@ -42,6 +44,7 @@ and how it behaves:
 | Open | Hardcoded `cosmic-files` | Default handler via `xdg-open`, with activation token |
 | Empty state | A button that ran `cosmic-files ""` | Plain label |
 | Dependencies | `drives`, `lfs-core`, `open`, `notify-rust` declared (unused or dead code), plus `procfs`, `udev` (needs libudev) | Only what is used; no libudev |
+| Phones | Not listed | MTP devices via GVfs/GIO (on a dedicated GLib thread), mounted and unmounted from the popup |
 | Config | Template leftover (`demo: String`) | None needed, so none |
 | `.desktop` | `MimeType=inode/directory` on an applet | Removed |
 
@@ -49,7 +52,8 @@ and how it behaves:
 
 Needs Rust (see `rust-toolchain.toml`; any recent stable that supports edition 2024 works) and the
 usual libcosmic build dependencies (`libxkbcommon-dev`, `libwayland-dev`, `libfontconfig-dev`,
-`libfreetype-dev`, ...). Unlike the original it does **not** need `libudev-dev`.
+`libfreetype-dev`, ...) plus the GLib development files (`libglib2.0-dev`, `glib` on Nix) for the
+phone support. Unlike the original it does **not** need `libudev-dev`.
 
 ```sh
 just build-release          # cargo build --release
@@ -61,7 +65,27 @@ Then add "Volumes" to your panel in COSMIC Settings. `just run` starts it outsid
 a Wayland session).
 
 At run time it needs the UDisks2 service (`udisks2`, present on practically every desktop distro)
-and a running polkit authentication agent for actions that need authorisation.
+and a running polkit authentication agent for actions that need authorisation. Phones additionally
+need **GVfs with its MTP backend** (`gvfs-mtp` / `gvfs-backends`, which pulls in libmtp), the same
+thing COSMIC Files and GNOME Files use. Without it the applet still works; phones just are not listed.
+
+## Phones
+
+A phone does not present itself as a disk. It speaks MTP, which UDisks2 knows nothing about, so the
+applet asks GVfs through GIO for those separately. Two things have to be true on the phone side, and
+neither can be detected or fixed from here:
+
+- **The USB mode must be "File transfer"** (MTP). Android defaults to "Charging only" every time you
+  plug in, and in that mode the phone offers no file interface at all, so nothing can appear in the
+  list. Pull down the notification shade after connecting and change the USB mode. The applet also
+  accepts GVfs's `gphoto2` devices ("Photo transfer" / PTP mode), which should show up the same way
+  but only expose photos; that mode is untested.
+- **The phone must be unlocked** when you mount it. If mounting fails, the popup shows the reason
+  with a reminder of the two points above.
+
+Clicking a phone mounts it and opens it in your file manager (through GVfs's FUSE mount under
+`/run/user/<uid>/gvfs/` when available, otherwise via `gio open`); the eject button unmounts it. The
+phone stays listed and can be mounted again. iPhones (GVfs's `afc` backend) are not included.
 
 ## Nix
 
@@ -73,9 +97,9 @@ nix develop          # cargo, clippy, rustfmt, rust-analyzer, just, dbus-daemon
 nix flake check      # unit tests + the end-to-end test
 ```
 
-On NixOS, use the module. It installs the applet and makes sure UDisks2 (which the applet talks to)
-is enabled; `services.desktopManager.cosmic` already enables it as a side effect of enabling gvfs, so
-this only makes the dependency explicit:
+On NixOS, use the module. It installs the applet and makes sure UDisks2 (disks) and GVfs (phones;
+it brings the libmtp udev rules, FUSE and the GIO modules) are enabled. `services.desktopManager.cosmic`
+already enables both as a side effect of enabling gvfs, so this only makes the dependency explicit:
 
 ```nix
 {
@@ -110,9 +134,16 @@ just check       # clippy, pedantic
 
 - Unit tests (`src/udisks.rs`) cover the filtering rules, labels, drive kinds, LUKS handling,
   the safe-removal decision, mount-point decoding and size formatting.
+- `src/mtp.rs` has unit tests for the scheme rules, the path-or-URI choice and what happens when
+  the GIO thread is gone.
 - `tests/e2e.rs` starts a private `dbus-daemon` as a stand-in system bus and an in-process fake
   UDisks2 service, then drives the real watcher and the real mount/unmount/power-off calls
   against it. It needs the `dbus-daemon` binary and is skipped without it. No root, no real disks.
+
+The phone path has **not** been tested with a real phone. The GIO side (thread, main loop, signals,
+mount/unmount commands) was exercised during development against GIO's built-in volume monitor
+using a loop-mounted image in `/etc/fstab`, which needs root and edits system files, so that test
+is not part of this repository. What a real MTP mount does on top of that is up to GVfs.
 
 ## Layout
 
@@ -123,6 +154,7 @@ cosmic-ext-applet-volumes/
   src/main.rs                    thin binary: tracing + run()
   src/lib.rs                     run() (what a multicall binary like cosmic-applets calls)
   src/app.rs                     cosmic::Application: state, update, popup view
+  src/mtp.rs                     phones: GIO/GVfs volume monitor on its own thread, mount/unmount
   src/udisks.rs                  UDisks2 types, parsing, filtering, mount/unmount/eject calls
   src/watch.rs                   snapshot + signal-driven refresh, reconnect on failure
   src/localize.rs, i18n.toml     Fluent localisation
@@ -145,8 +177,8 @@ to their `Cargo.lock`.
 
 ## Not covered
 
-- **Network shares** (SMB/NFS/SFTP mounted through GVFS): UDisks2 does not know about them. The
-  original declared a `Network` device type but never produced one either.
+- **Network shares** (SMB/NFS/SFTP mounted through GVFS) and **iPhones**: not listed. The original
+  declared a `Network` device type but never produced one either.
 - **Unlocking encrypted (LUKS) volumes**: an already unlocked volume is shown and removable;
   locked ones are not listed.
 - **Flatpak**: the original shipped a manifest that shelled out via `flatpak-spawn --host`. That is
@@ -154,7 +186,8 @@ to their `Cargo.lock`.
 - **AppStream metainfo** is not included: it needs a named developer and contact, and this
   project deliberately has neither.
 - **Translations**: Czech, Polish and Swedish carry the original's one string. The new strings
-  (`mount`, `drive-service-unavailable`) exist only in English and fall back to it.
+  (`mount`, `drive-service-unavailable`, `phone-mount-hint`) exist only in English and fall back to
+  it.
 
 ## Identity
 
