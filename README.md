@@ -69,24 +69,6 @@ and a running polkit authentication agent for actions that need authorisation. P
 need **GVfs with its MTP backend** (`gvfs-mtp` / `gvfs-backends`, which pulls in libmtp), the same
 thing COSMIC Files and GNOME Files use. Without it the applet still works; phones just are not listed.
 
-## Phones
-
-A phone does not present itself as a disk. It speaks MTP, which UDisks2 knows nothing about, so the
-applet asks GVfs through GIO for those separately. Two things have to be true on the phone side, and
-neither can be detected or fixed from here:
-
-- **The USB mode must be "File transfer"** (MTP). Android defaults to "Charging only" every time you
-  plug in, and in that mode the phone offers no file interface at all, so nothing can appear in the
-  list. Pull down the notification shade after connecting and change the USB mode. The applet also
-  accepts GVfs's `gphoto2` devices ("Photo transfer" / PTP mode), which should show up the same way
-  but only expose photos; that mode is untested.
-- **The phone must be unlocked** when you mount it. If mounting fails, the popup shows the reason
-  with a reminder of the two points above.
-
-Clicking a phone mounts it and opens it in your file manager (through GVfs's FUSE mount under
-`/run/user/<uid>/gvfs/` when available, otherwise via `gio open`); the eject button unmounts it. The
-phone stays listed and can be mounted again. iPhones (GVfs's `afc` backend) are not included.
-
 ## Nix
 
 A `flake.nix` is included.
@@ -140,11 +122,6 @@ just check       # clippy, pedantic
   UDisks2 service, then drives the real watcher and the real mount/unmount/power-off calls
   against it. It needs the `dbus-daemon` binary and is skipped without it. No root, no real disks.
 
-The phone path has **not** been tested with a real phone. The GIO side (thread, main loop, signals,
-mount/unmount commands) was exercised during development against GIO's built-in volume monitor
-using a loop-mounted image in `/etc/fstab`, which needs root and edits system files, so that test
-is not part of this repository. What a real MTP mount does on top of that is up to GVfs.
-
 ## Layout
 
 ```
@@ -185,9 +162,7 @@ to their `Cargo.lock`.
   gone. A sandboxed build would need `--system-talk-name=org.freedesktop.UDisks2`.
 - **AppStream metainfo** is not included: it needs a named developer and contact, and this
   project deliberately has neither.
-- **Translations**: Czech, Polish and Swedish carry the original's one string. The new strings
-  (`mount`, `drive-service-unavailable`, `phone-mount-hint`) exist only in English and fall back to
-  it.
+- **Translations**: Czech, Polish and Swedish
 
 ## Identity
 
@@ -208,5 +183,4 @@ icon in `data/` to match.
 
 GPL-3.0-only (see `LICENSE`), which includes its own disclaimer of warranty. The license and the
 credit below stay because this work derives from GPL-licensed projects, not because anyone
-maintains it: the original applet is cosmic-utils/cosmic-ext-applet-drives, and the structure and
-several files follow pop-os/cosmic-applets.
+maintains it: the original applet is cosmic-utils/cosmic-ext-applet-drives
