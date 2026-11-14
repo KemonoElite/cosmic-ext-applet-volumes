@@ -1,8 +1,8 @@
 # Volumes
 
 A panel applet for the [COSMIC](https://github.com/pop-os/cosmic-epoch) desktop that lists your
-volumes (USB sticks, SD cards, discs, external disks, Android phones) and lets you open, mount and
-safely remove them. Like macOS, where every disk shows up under `/Volumes`.
+volumes (USB sticks, SD cards, discs, external disks, Android phones, Samba and NFS shares) and lets
+you open, mount and safely remove them. Like macOS, where every disk shows up under `/Volumes`.
 
 > **No maintainer, no support, no warranty.** This project is not maintained. There is nobody to
 > report bugs to and nobody who will fix them. It is provided as is and you use it entirely at your
@@ -26,6 +26,8 @@ recipes.
   mounted, powers it off (or ejects the disc), i.e. "safe to remove".
 - **Android phones** (and other MTP devices) are listed too, with a phone icon, and mounted and
   unmounted the same way. See "Phones" below for what the phone has to do.
+- **Network shares** (Samba/SMB and NFS) are listed too: ones that are already mounted, however they
+  got mounted, plus ones you add with "Connect to server…". See "Network shares" below.
 - The list updates live when drives are plugged in, unplugged, mounted or unmounted.
 - Failures (device busy, permission denied, ...) are shown in the popup with the daemon's own
   message instead of being swallowed.
@@ -44,7 +46,7 @@ and how it behaves:
 | Open | Hardcoded `cosmic-files` | Default handler via `xdg-open`, with activation token |
 | Empty state | A button that ran `cosmic-files ""` | Plain label |
 | Dependencies | `drives`, `lfs-core`, `open`, `notify-rust` declared (unused or dead code), plus `procfs`, `udev` (needs libudev) | Only what is used; no libudev |
-| Phones | Not listed | MTP devices via GVfs/GIO (on a dedicated GLib thread), mounted and unmounted from the popup |
+| Phones and network shares | Not listed | MTP devices and SMB/NFS shares via GVfs/GIO (on a dedicated GLib thread), mounted and unmounted from the popup, with a password prompt |
 | Config | Template leftover (`demo: String`) | None needed, so none |
 | `.desktop` | `MimeType=inode/directory` on an applet | Removed |
 
@@ -66,8 +68,57 @@ a Wayland session).
 
 At run time it needs the UDisks2 service (`udisks2`, present on practically every desktop distro)
 and a running polkit authentication agent for actions that need authorisation. Phones additionally
-need **GVfs with its MTP backend** (`gvfs-mtp` / `gvfs-backends`, which pulls in libmtp), the same
-thing COSMIC Files and GNOME Files use. Without it the applet still works; phones just are not listed.
+and network shares need **GVfs with its backends** (`gvfs-backends`: MTP through libmtp, SMB through
+libsmbclient, NFS through libnfs), the same thing COSMIC Files and GNOME Files use. Without it the
+applet still works; phones and shares just are not listed.
+
+## Phones
+
+A phone does not present itself as a disk. It speaks MTP, which UDisks2 knows nothing about, so the
+applet asks GVfs through GIO for those separately. Two things have to be true on the phone side, and
+neither can be detected or fixed from here:
+
+- **The USB mode must be "File transfer"** (MTP). Android defaults to "Charging only" every time you
+  plug in, and in that mode the phone offers no file interface at all, so nothing can appear in the
+  list. Pull down the notification shade after connecting and change the USB mode. The applet also
+  accepts GVfs's `gphoto2` devices ("Photo transfer" / PTP mode), which should show up the same way
+  but only expose photos; that mode is untested.
+- **The phone must be unlocked** when you mount it. If mounting fails, the popup shows the reason
+  with a reminder of the two points above.
+
+Clicking a phone mounts it and opens it in your file manager (through GVfs's FUSE mount under
+`/run/user/<uid>/gvfs/` when available, otherwise via `gio open`); the eject button unmounts it. The
+phone stays listed and can be mounted again. iPhones (GVfs's `afc` backend) are not included.
+
+## Network shares
+
+Shares are handled through GVfs/GIO, like phones, and appear in the same list with a "remote folder"
+icon. Three sources feed that list:
+
+- **Shares you add.** "Connect to server…" at the bottom of the popup takes an address such as
+  `smb://nas/media` or `nfs://nas/export`. Once it has mounted successfully the address is saved to
+  `~/.config/cosmic-ext-applet-volumes/shares` (one address per line, never a password) so the share
+  stays in the list after you unmount it. GVfs forgets unmounted shares, which is why the applet keeps
+  its own list. While a saved share is unmounted, the button at the end of its row removes it from
+  the list.
+- **Shares mounted some other way**: in the file manager, with `mount`, or from `/etc/fstab`. They
+  show up while mounted and can be unmounted here. Kernel `cifs`/`nfs` mounts are recognised by
+  reading `/proc/self/mountinfo`; `fstab` entries with the `user` or `users` option are listed as
+  mountable even when unmounted. (This part is written and unit-tested but could not be tried against
+  a real kernel mount; see "Tests".)
+- **Passwords.** Samba usually wants a login, and GVfs asks for it even for guest shares, so the
+  popup shows a small form (user name, domain, password, "connect anonymously" when the server allows
+  it). The applet never stores the password; it tells GVfs to remember it for the session at most.
+  An address that contains a password (`smb://user:secret@host/...`) is refused so it cannot end up
+  in the saved list.
+
+NFS needs no login for the usual `AUTH_SYS` exports, so nothing is asked.
+
+If a share cannot be mounted the popup shows GVfs's message plus a reminder to check the address,
+login and share name. GVfs's SMB backend is terse: a wrong host name and a wrong password can both come
+back as "Failed to mount Windows share: Invalid argument".
+
+Not included: other protocols GVfs supports (SFTP, WebDAV, FTP), and browsing the network for servers.
 
 ## Nix
 
@@ -116,11 +167,27 @@ just check       # clippy, pedantic
 
 - Unit tests (`src/udisks.rs`) cover the filtering rules, labels, drive kinds, LUKS handling,
   the safe-removal decision, mount-point decoding and size formatting.
-- `src/mtp.rs` has unit tests for the scheme rules, the path-or-URI choice and what happens when
-  the GIO thread is gone.
+- `src/gvfs.rs` and `src/shares.rs` have unit tests: scheme rules, the path-or-URI choice, what
+  happens when the GIO thread is gone, address parsing and normalisation (including refusing
+  passwords), recognising network mounts in mountinfo and fstab device columns, and the saved-shares
+  file (round trip, junk lines dropped).
 - `tests/e2e.rs` starts a private `dbus-daemon` as a stand-in system bus and an in-process fake
   UDisks2 service, then drives the real watcher and the real mount/unmount/power-off calls
   against it. It needs the `dbus-daemon` binary and is skipped without it. No root, no real disks.
+
+The phone path has **not** been tested with a real phone. The GIO side was exercised during
+development in two ways, neither of which is part of this repository because they need root, system
+services or edit system files:
+
+- against GIO's built-in volume monitor, using a loop-mounted image listed in `/etc/fstab`
+  (listing, mounting, unmounting, and changes made from outside the applet arriving as signals);
+- against a **real Samba server and a real NFS server (nfs-ganesha) through real GVfs** on a private
+  session bus: saved shares listed while unmounted, the password prompt (cancel, wrong password then
+  right password, guest), file contents read back through the mounted path, unmount, an unreachable
+  server, and an NFS path that is not exported.
+
+Not tested: kernel `cifs`/`nfs` mounts and `fstab` network entries (the test machine's kernel had
+neither filesystem; only the detection logic is unit-tested), and any real phone.
 
 ## Layout
 
@@ -131,7 +198,8 @@ cosmic-ext-applet-volumes/
   src/main.rs                    thin binary: tracing + run()
   src/lib.rs                     run() (what a multicall binary like cosmic-applets calls)
   src/app.rs                     cosmic::Application: state, update, popup view
-  src/mtp.rs                     phones: GIO/GVfs volume monitor on its own thread, mount/unmount
+  src/gvfs.rs                    phones and network shares: GIO/GVfs on its own thread, mount/unmount, password prompt
+  src/shares.rs                  share addresses, the saved-shares file, spotting network mounts (no GIO)
   src/udisks.rs                  UDisks2 types, parsing, filtering, mount/unmount/eject calls
   src/watch.rs                   snapshot + signal-driven refresh, reconnect on failure
   src/localize.rs, i18n.toml     Fluent localisation
@@ -154,15 +222,17 @@ to their `Cargo.lock`.
 
 ## Not covered
 
-- **Network shares** (SMB/NFS/SFTP mounted through GVFS) and **iPhones**: not listed. The original
-  declared a `Network` device type but never produced one either.
+- **Other network protocols** (SFTP, WebDAV, FTP), **browsing the network for servers**, and
+  **iPhones**: not included.
 - **Unlocking encrypted (LUKS) volumes**: an already unlocked volume is shown and removable;
   locked ones are not listed.
 - **Flatpak**: the original shipped a manifest that shelled out via `flatpak-spawn --host`. That is
   gone. A sandboxed build would need `--system-talk-name=org.freedesktop.UDisks2`.
 - **AppStream metainfo** is not included: it needs a named developer and contact, and this
   project deliberately has neither.
-- **Translations**: Czech, Polish and Swedish
+- **Translations**: Czech, Polish and Swedish carry the original's one string. The new strings
+  (`mount`, `drive-service-unavailable`, `phone-mount-hint`) exist only in English and fall back to
+  it.
 
 ## Identity
 
@@ -183,4 +253,5 @@ icon in `data/` to match.
 
 GPL-3.0-only (see `LICENSE`), which includes its own disclaimer of warranty. The license and the
 credit below stay because this work derives from GPL-licensed projects, not because anyone
-maintains it: the original applet is cosmic-utils/cosmic-ext-applet-drives
+maintains it: the original applet is cosmic-utils/cosmic-ext-applet-drives, and the structure and
+several files follow pop-os/cosmic-applets.

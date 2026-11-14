@@ -1,5 +1,5 @@
 {
-  description = "Volumes: a COSMIC panel applet to open, mount and safely remove drives";
+  description = "Volumes: a COSMIC panel applet for drives, phones and network shares";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -80,7 +80,7 @@
             doCheck = false;
 
             meta = {
-              description = "COSMIC panel applet to open, mount and safely remove drives";
+              description = "COSMIC panel applet to open, mount and safely remove drives, phones and network shares";
               longDescription = ''
                 Unmaintained: no maintainer, no support, no warranty. Use at your own risk.
               '';
@@ -104,7 +104,8 @@
       };
 
       # NixOS module: installs the applet and turns on the two services it relies on: UDisks2
-      # (disks) and GVfs (phones over MTP: it brings the libmtp udev rules, FUSE and the GIO
+      # (disks) and GVfs (phones over MTP and Samba/NFS shares: its nixpkgs package is built with
+      # libmtp, samba and libnfs, and the module brings the libmtp udev rules, FUSE and the GIO
       # modules). services.desktopManager.cosmic already enables both as a side effect of
       # enabling gvfs; this makes the dependency explicit.
       #   imports = [ inputs.volumes.nixosModules.default ];
@@ -113,7 +114,7 @@
         { config, lib, pkgs, ... }:
         {
           options.programs.cosmic-ext-applet-volumes.enable =
-            lib.mkEnableOption "the Volumes COSMIC panel applet, and the UDisks2 and GVfs services it talks to";
+            lib.mkEnableOption "the Volumes COSMIC panel applet, and the UDisks2 and GVfs services it talks to (disks; phones and network shares)";
 
           config = lib.mkIf config.programs.cosmic-ext-applet-volumes.enable {
             environment.systemPackages = [ (package pkgs) ];

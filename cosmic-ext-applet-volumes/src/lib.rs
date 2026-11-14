@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 mod app;
+pub mod gvfs;
 mod localize;
-pub mod mtp;
+pub mod shares;
 pub mod udisks;
 pub mod watch;
 
